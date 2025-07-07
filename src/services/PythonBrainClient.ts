@@ -28,11 +28,12 @@ export class PythonBrainClient {
   private wsUrl: string = 'ws://localhost:5000';
   private isConnected: boolean = false;
   private reconnectAttempts: number = 0;
-  private maxReconnectAttempts: number = 5;
+  private maxReconnectAttempts: number = 3;
   private reconnectDelay: number = 2000;
   private pendingRequests: Map<string, any> = new Map();
   private subscribers: Map<string, Function[]> = new Map();
   private analysisCache: Map<string, PythonAnalysisResult> = new Map();
+  private connectionRetryTimer: NodeJS.Timeout | null = null;
 
   static getInstance(): PythonBrainClient {
     if (!PythonBrainClient.instance) {
@@ -42,7 +43,14 @@ export class PythonBrainClient {
   }
 
   constructor() {
-    this.connect();
+    // Don't auto-connect on instantiation to avoid immediate errors
+    // Connection will be attempted when needed
+  }
+
+  public initialize() {
+    if (!this.isConnected && this.reconnectAttempts === 0) {
+      this.connect();
+    }
   }
 
   private connect() {
@@ -73,12 +81,12 @@ export class PythonBrainClient {
       };
 
       this.websocket.onerror = (error) => {
-        console.error('🐍 WebSocket error:', error);
+        console.warn('🐍 WebSocket connection failed - Python Brain service may not be running');
         this.emitConnectionEvent('error');
       };
 
     } catch (error) {
-      console.error('🐍 Failed to connect to Python Brain:', error);
+      console.warn('🐍 Failed to connect to Python Brain - service may not be running');
       this.handleReconnect();
     }
   }
@@ -86,13 +94,13 @@ export class PythonBrainClient {
   private handleReconnect() {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
-      console.log(`🐍 Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+      console.warn(`🐍 Attempting to reconnect to Python Brain (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
       
-      setTimeout(() => {
+      this.connectionRetryTimer = setTimeout(() => {
         this.connect();
       }, this.reconnectDelay * this.reconnectAttempts);
     } else {
-      console.error('🐍 Max reconnection attempts reached');
+      console.warn('🐍 Python Brain service unavailable - some features will be disabled');
       this.emitConnectionEvent('failed');
     }
   }
@@ -268,14 +276,26 @@ export class PythonBrainClient {
 
   public async getStatus(): Promise<PythonBrainStatus> {
     try {
+      // Check if service is available before making request
+      if (!this.isConnected && this.reconnectAttempts >= this.maxReconnectAttempts) {
+        throw new Error('Python Brain service is not available');
+      }
+
       const response = await fetch(`${this.baseUrl}/health`);
       if (!response.ok) {
         throw new Error(`Status request failed: ${response.statusText}`);
       }
       return await response.json();
     } catch (error) {
-      console.error('🐍 Status request error:', error);
-      throw error;
+      // Return a default status instead of throwing to prevent UI errors
+      console.warn('🐍 Python Brain service unavailable, returning default status');
+      return {
+        pythonReady: false,
+        connectedClients: 0,
+        activeStreams: 0,
+        lastHeartbeat: null,
+        analysisCache: 0
+      };
     }
   }
 
@@ -344,11 +364,16 @@ export class PythonBrainClient {
   }
 
   public disconnect(): void {
+    if (this.connectionRetryTimer) {
+      clearTimeout(this.connectionRetryTimer);
+      this.connectionRetryTimer = null;
+    }
     if (this.websocket) {
       this.websocket.close();
       this.websocket = null;
     }
     this.isConnected = false;
+    this.reconnectAttempts = 0;
   }
 }
 

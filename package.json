@@ -8,7 +8,9 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "server": "node server/nexus-nt8-bridge.js"
+    "server": "node server/nexus-nt8-bridge.js",
+    "python-brain": "node server/python-brain.js",
+    "dev:full": "concurrently \"npm run server\" \"npm run python-brain\" \"npm run dev\""
   },
   "dependencies": {
     "@mistralai/mistralai": "^1.7.3",
@@ -36,6 +38,7 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.18",
+    "concurrently": "^9.2.0",
     "eslint": "^9.9.1",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
     "eslint-plugin-react-refresh": "^0.4.11",

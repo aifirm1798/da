@@ -35,6 +35,9 @@ export const PythonBrainMonitor: React.FC<PythonBrainMonitorProps> = ({ dashboar
     // Check initial connection status
     setIsConnected(pythonBrainClient.getConnectionStatus());
     
+    // Initialize connection
+    pythonBrainClient.initialize();
+    
     // Load status
     loadStatus();
     
@@ -86,7 +89,15 @@ export const PythonBrainMonitor: React.FC<PythonBrainMonitorProps> = ({ dashboar
       const currentStatus = await pythonBrainClient.getStatus();
       setStatus(currentStatus);
     } catch (error) {
-      console.error('Failed to load Python Brain status:', error);
+      console.warn('Python Brain service unavailable:', error);
+      // Set a default status to prevent UI errors
+      setStatus({
+        pythonReady: false,
+        connectedClients: 0,
+        activeStreams: 0,
+        lastHeartbeat: null,
+        analysisCache: 0
+      });
     }
   };
 
@@ -147,12 +158,14 @@ export const PythonBrainMonitor: React.FC<PythonBrainMonitorProps> = ({ dashboar
 
   const getStatusText = () => {
     if (!isConnected) return 'Disconnected';
+    if (!status) return 'Loading...';
     if (!status?.pythonReady) return 'Initializing';
     return 'Ready';
   };
 
   const getStatusIcon = () => {
     if (!isConnected) return <AlertCircle className="w-5 h-5 text-red-400" />;
+    if (!status) return <Clock className="w-5 h-5 text-gray-400" />;
     if (!status?.pythonReady) return <Clock className="w-5 h-5 text-yellow-400" />;
     return <CheckCircle className="w-5 h-5 text-green-400" />;
   };
@@ -330,10 +343,25 @@ export const PythonBrainMonitor: React.FC<PythonBrainMonitorProps> = ({ dashboar
         
         <div className="space-y-3 max-h-64 overflow-y-auto">
           {recentAnalysis.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-gray-500 relative">
               <Brain className="w-12 h-12 mx-auto mb-4 text-gray-600" />
-              <p>No analysis results yet</p>
-              <p className="text-sm">Run an analysis to see results here</p>
+              {!isConnected ? (
+                <>
+                  <p className="text-orange-400 font-medium">Python Brain Service Unavailable</p>
+                  <p className="text-sm mt-2">
+                    Start the Python Brain service to enable AI analysis features
+                  </p>
+                  <div className="mt-4 p-3 bg-gray-800 rounded-lg text-left">
+                    <p className="text-xs text-gray-400 mb-1">To start the service:</p>
+                    <code className="text-xs text-green-400">npm run python-brain</code>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p>No analysis results yet</p>
+                  <p className="text-sm">Run an analysis to see results here</p>
+                </>
+              )}
             </div>
           ) : (
             recentAnalysis.map((result, index) => (
